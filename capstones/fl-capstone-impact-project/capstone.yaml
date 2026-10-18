@@ -1,0 +1,23 @@
+track: "General AI Fluency"
+capstone: "Impact Project / Send the Link: Launch, Demo & Story"
+intern: "Kunal Aggarwal"
+version: "1.0.0"
+date: "2026-10-18"
+status: "Completed"
+deliverables:
+  portfolio_url: "https://kunalaggarwal-flyrank.netlify.app/"
+  demo_video: "https://youtu.be/unlisted-flyrank-repoarchitect-demo"
+  badge_verification: "https://internship-badge.netlify.app"
+requirements:
+  - id: "habit-protocol"
+    title: "How to add the next case study note"
+    verified: true
+  - id: "named-next-piece"
+    title: "Named next piece of work with reminder set"
+    verified: true
+  - id: "claude-context"
+    title: "Claude Project context preserved"
+    verified: true
+  - id: "live-deployment"
+    title: "Portfolio live over HTTPS with analytics & badge"
+    verified: true
