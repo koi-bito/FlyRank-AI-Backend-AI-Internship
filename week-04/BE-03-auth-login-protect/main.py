@@ -1,6 +1,6 @@
 import os
 import time
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Request
 from fastapi.responses import JSONResponse
 import uvicorn
 from auth import (
@@ -90,6 +90,28 @@ async def login(payload: dict):
         "access_token": token,
         "token_type": "bearer",
         "expires_in": 3600
+    }
+
+@app.get("/public/info")
+def get_public_info():
+    return {
+        "access": "public",
+        "message": "This endpoint requires zero authentication. Open to all clients.",
+        "timestamp": int(time.time())
+    }
+
+@app.get("/protected/profile")
+def get_protected_profile(request: Request):
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"error": "Access token required"}
+        )
+    # Stage 2: gate check present, token not yet cryptographically verified
+    return {
+        "access": "protected",
+        "header_received": auth_header[:15] + "..."
     }
 
 if __name__ == "__main__":
