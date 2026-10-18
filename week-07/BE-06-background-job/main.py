@@ -26,23 +26,29 @@ async def say_hello(ctx: inngest.Context, step: inngest.StepSync) -> str:
 @inngest_client.create_function(
     fn_id="make-report",
     trigger=inngest.TriggerEvent(event="report/requested"),
+    retries=2, # Configures 3 attempts total with exponential backoff
 )
 async def make_report(ctx: inngest.Context, step: inngest.StepSync) -> dict:
     report_id = ctx.event.data.get("report_id")
     topic = ctx.event.data.get("topic")
 
-    # Step 1: Simulate 8-second slow background compute
+    # Step 1: Sleep 8s simulating slow compilation
     await step.sleep("do-the-slow-work", datetime.timedelta(seconds=8))
 
-    # Step 2: Build and store report result
-    def _save_done():
+    # Step 2: Build report or trigger intentional failure
+    def _build_step():
+        if topic == "fail":
+            if report_id in REPORTS:
+                REPORTS[report_id]["status"] = "failed"
+            raise RuntimeError(f"Simulated unrecoverable report generation failure on topic '{topic}'")
+        
         if report_id in REPORTS:
             REPORTS[report_id]["status"] = "done"
-            REPORTS[report_id]["result"] = f"Comprehensive executive report on {topic} successfully compiled."
+            REPORTS[report_id]["result"] = f"Comprehensive executive report on '{topic}' successfully compiled."
             REPORTS[report_id]["completed_at"] = time.time()
         return {"report_id": report_id, "status": "done"}
 
-    res = await step.run("build-report", _save_done)
+    res = await step.run("build-report", _build_step)
     return res
 
 serve(app, inngest_client, [say_hello, make_report])
@@ -53,9 +59,29 @@ def get_health():
 
 @app.post("/reports", status_code=status.HTTP_202_ACCEPTED)
 async def request_report(request: Request):
-    body = await request.json()
-    topic = body.get("topic")
-    
+    # Boundary Input Validation: Bad inputs must be rejected at the door!
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": "Malformed JSON body"}
+        )
+        
+    if not body or "topic" not in body:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": "Field 'topic' is required"}
+        )
+        
+    raw_topic = body.get("topic")
+    if not isinstance(raw_topic, str) or not raw_topic.strip():
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": "Field 'topic' cannot be empty or whitespace"}
+        )
+        
+    topic = raw_topic.strip()
     report_id = f"rep_{uuid.uuid4().hex[:8]}"
     REPORTS[report_id] = {
         "id": report_id,
@@ -71,7 +97,6 @@ async def request_report(request: Request):
         data={"report_id": report_id, "topic": topic}
     ))
 
-    # Return 202 Accepted immediately
     return JSONResponse(
         status_code=status.HTTP_202_ACCEPTED,
         content={"id": report_id, "status": "pending"}
