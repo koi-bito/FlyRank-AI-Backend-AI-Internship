@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Response
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import uvicorn
@@ -77,6 +77,82 @@ async def create_task(payload: dict):
         "done": bool(created["done"]),
         "created_at": created["created_at"]
     }
+
+@app.put("/tasks/{task_id}")
+async def update_task(task_id: int, payload: dict):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, title, done FROM tasks WHERE id = ?", (task_id,))
+    existing = cursor.fetchone()
+    
+    if not existing:
+        conn.close()
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"error": f"Task {task_id} not found"}
+        )
+        
+    if not payload:
+        conn.close()
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": "Update payload cannot be empty"}
+        )
+        
+    new_title = existing["title"]
+    new_done = existing["done"]
+    
+    if "title" in payload:
+        title = str(payload["title"]).strip()
+        if not title:
+            conn.close()
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"error": "Title cannot be empty"}
+            )
+        new_title = title
+        
+    if "done" in payload:
+        if not isinstance(payload["done"], bool):
+            conn.close()
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"error": "'done' field must be a boolean"}
+            )
+        new_done = 1 if payload["done"] else 0
+        
+    cursor.execute("UPDATE tasks SET title = ?, done = ? WHERE id = ?", (new_title, new_done, task_id))
+    conn.commit()
+    
+    cursor.execute("SELECT id, title, done, created_at FROM tasks WHERE id = ?", (task_id,))
+    updated = cursor.fetchone()
+    conn.close()
+    
+    return {
+        "id": updated["id"],
+        "title": updated["title"],
+        "done": bool(updated["done"]),
+        "created_at": updated["created_at"]
+    }
+
+@app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_task(task_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM tasks WHERE id = ?", (task_id,))
+    row = cursor.fetchone()
+    
+    if not row:
+        conn.close()
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"error": f"Task {task_id} not found"}
+        )
+        
+    cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+    conn.commit()
+    conn.close()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
