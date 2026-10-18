@@ -3,23 +3,23 @@
 **Track:** Backend AI Engineering  
 **Assignment Code:** BE-08  
 **Dataset:** Option A — Shop Orders (`report.db`)  
-**Stack:** FastAPI, Python 3.12, SQLite, ReportLab (Vector PDF Engine)
+**Stack:** FastAPI, Python 3.12, SQLite, Playwright (Headless Chromium HTML-to-PDF Engine)
 
 ---
 
 ## 1. Overview & Architecture
 
-This service queries transaction data with SQL, renders structured aggregate metrics into a multi-page PDF document, stores the resulting binary file on disk, and serves it to clients strictly by link.
+This service queries transaction data with SQL, structures aggregate metrics into a high-fidelity HTML document, renders it into a multi-page PDF via **Playwright's headless Chromium**, stores the resulting binary file on disk, and serves it to clients strictly by link.
 
 ```
-+-------------------------------------------------------------------------------+
-|                             THE 4-MOVE PIPELINE                               |
-|                                                                               |
-|   1. QUERY             2. RENDER               3. STORE         4. SERVE      |
-|  [SQLite Aggs]  -->  [ReportLab Flow]  -->  [Disk + DB Path] --> [HTTP Link]  |
-|                                                                               |
-|   * Rule: Store and link. JSON payloads NEVER carry raw binary file bytes.    |
-+-------------------------------------------------------------------------------+
++-----------------------------------------------------------------------------------------+
+|                                    THE 4-MOVE PIPELINE                                  |
+|                                                                                         |
+|   1. QUERY                 2. RENDER                 3. STORE          4. SERVE         |
+|  [SQLite Aggs]  -->  [Playwright Chromium]  -->  [Disk + DB Path] --> [HTTP Link]       |
+|                                                                                         |
+|   * Rule: Store and link. JSON payloads NEVER carry raw binary file bytes.              |
++-----------------------------------------------------------------------------------------+
 ```
 
 ---
@@ -70,9 +70,10 @@ LIMIT 60;
 
 ## 3. How to Run
 
-### Step 1: Install Dependencies
+### Step 1: Install Dependencies & Playwright Browser
 ```bash
-pip install fastapi uvicorn reportlab pytest
+pip install -r requirements.txt
+playwright install chromium
 ```
 
 ### Step 2: Seed the Database
@@ -153,7 +154,7 @@ curl http://127.0.0.1:8000/reports/rep_999333a466
 ```bash
 curl -O -J http://127.0.0.1:8000/reports/rep_999333a466/file
 ```
-The downloaded file is verified as a valid PDF binary (>8 KB) spanning 2 pages.
+The downloaded file is verified as a valid PDF binary (>70 KB) spanning multiple pages.
 
 ---
 
@@ -173,8 +174,11 @@ The downloaded file is verified as a valid PDF binary (>8 KB) spanning 2 pages.
 
 ---
 
-## 7. Clean Page Break Guarantee
+## 7. Clean Page Break Guarantee (Playwright CSS Architecture)
 
-In multi-page document generation, a common failure is row slicing where a table entry is bisected across a page margin. In this implementation:
-1. `Table(..., repeatRows=1)` ensures the column header row automatically re-renders at the top of Page 2.
-2. Flowables and table row heights are strictly managed so that individual transaction entries are never fractured across page boundaries.
+In headless browser HTML-to-PDF generation, two critical layout bugs routinely break multi-page documents: sliced table rows and vanishing column headers. This implementation enforces CSS print directives to eliminate both:
+
+1. **Anti-Row-Splitting (`tr { break-inside: avoid; page-break-inside: avoid; }`):**
+   Ensures the browser print engine moves an entire row to the subsequent page rather than cleaving it horizontally across margins.
+2. **Repeating Column Headers (`thead { display: table-header-group; }`):**
+   Standard CSS print specification directive that forces Chromium to repeat `<thead>` rows at the top of every subsequent page for table continuity.

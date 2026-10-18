@@ -1,165 +1,289 @@
 import os
-from reportlab.lib.pagesizes import letter
-from reportlab.lib import colors
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether
-)
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from playwright.sync_api import sync_playwright
 
-def generate_pdf_report(data: dict, output_path: str):
+def build_html_report(data: dict) -> str:
+    """
+    Builds a clean, production-grade HTML document for headless Chromium PDF rendering.
+    Enforces CSS rules to prevent table row page-splitting and ensures thead repetition.
+    """
+    # 1. KPI Cards HTML (Totals)
+    kpi_cards_html = f"""
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-label">Total Orders</div>
+            <div class="kpi-value">{data.get('total_orders', 0):,}</div>
+            <div class="kpi-sub">Processed volume</div>
+        </div>
+        <div class="kpi-card highlight">
+            <div class="kpi-label">Total Revenue</div>
+            <div class="kpi-value text-emerald">${data.get('total_revenue', 0.0):,.2f}</div>
+            <div class="kpi-sub">Gross merchandise value</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Average Order Value</div>
+            <div class="kpi-value">${data.get('avg_order_value', 0.0):,.2f}</div>
+            <div class="kpi-sub">Per completed transaction</div>
+        </div>
+    </div>
+    """
+
+    # 2. Top 5 Products Table
+    top_products_rows = ""
+    for idx, p in enumerate(data.get("top_products", []), 1):
+        top_products_rows += f"""
+        <tr>
+            <td style="font-weight: 600; width: 40px; text-align: center;">#{idx}</td>
+            <td style="font-weight: 500;">{p.get('product', '')}</td>
+            <td style="text-align: right;">{p.get('units_sold', 0):,}</td>
+            <td style="text-align: right; font-weight: 600; color: #0F172A;">${p.get('revenue', 0.0):,.2f}</td>
+        </tr>
+        """
+
+    # 3. Long Detailed Table of Orders
+    order_rows = ""
+    for o in data.get("detailed_orders", []):
+        order_rows += f"""
+        <tr>
+            <td style="font-family: monospace; font-size: 11px; color: #64748B;">#{o.get('id', '')}</td>
+            <td style="font-weight: 500;">{o.get('customer', '')}</td>
+            <td>{o.get('product', '')}</td>
+            <td style="text-align: right; font-weight: 600;">${o.get('amount', 0.0):.2f}</td>
+            <td style="color: #64748B; font-size: 11px;">{o.get('created_at', '')}</td>
+        </tr>
+        """
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Executive Order & Revenue Intelligence Report</title>
+    <style>
+        @page {{
+            size: A4;
+            margin: 18mm 14mm 18mm 14mm;
+        }}
+
+        * {{
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }}
+
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: #0F172A;
+            background-color: #FFFFFF;
+            line-height: 1.45;
+            font-size: 12px;
+            margin: 0;
+            padding: 0;
+        }}
+
+        /* Header block */
+        .report-header {{
+            border-bottom: 2px solid #0F172A;
+            padding-bottom: 12px;
+            margin-bottom: 20px;
+        }}
+
+        .report-title {{
+            font-size: 22px;
+            font-weight: 800;
+            color: #0F172A;
+            margin: 0 0 4px 0;
+            letter-spacing: -0.02em;
+        }}
+
+        .report-subtitle {{
+            font-size: 11px;
+            color: #64748B;
+            margin: 0;
+        }}
+
+        /* KPI Cards Grid */
+        .kpi-grid {{
+            display: flex;
+            gap: 12px;
+            margin-bottom: 24px;
+        }}
+
+        .kpi-card {{
+            flex: 1;
+            padding: 12px 14px;
+            background-color: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            border-radius: 6px;
+        }}
+
+        .kpi-card.highlight {{
+            background-color: #F0FDF4;
+            border-color: #BBF7D0;
+        }}
+
+        .kpi-label {{
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #64748B;
+            margin-bottom: 4px;
+        }}
+
+        .kpi-value {{
+            font-size: 20px;
+            font-weight: 800;
+            color: #0F172A;
+            margin-bottom: 2px;
+        }}
+
+        .kpi-value.text-emerald {{
+            color: #059669;
+        }}
+
+        .kpi-sub {{
+            font-size: 10px;
+            color: #94A3B8;
+        }}
+
+        /* Section Headings */
+        h2 {{
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #1E293B;
+            margin: 18px 0 8px 0;
+        }}
+
+        /* Table Architecture with Page Break Defense */
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 22px;
+            page-break-inside: auto;
+        }}
+
+        /* Essential Browser Print Engine Directives:
+           1. thead repeats on every page break
+           2. tr avoids being sliced midway across a page break */
+        thead {{
+            display: table-header-group;
+        }}
+
+        tfoot {{
+            display: table-footer-group;
+        }}
+
+        tr {{
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+        }}
+
+        th {{
+            background-color: #0F172A;
+            color: #FFFFFF;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            padding: 8px 10px;
+            text-align: left;
+            border: 1px solid #0F172A;
+        }}
+
+        td {{
+            padding: 6px 10px;
+            font-size: 11px;
+            border: 1px solid #E2E8F0;
+            vertical-align: middle;
+        }}
+
+        tbody tr:nth-child(even) {{
+            background-color: #F8FAFC;
+        }}
+
+        .footer {{
+            margin-top: 30px;
+            border-top: 1px solid #E2E8F0;
+            padding-top: 10px;
+            font-size: 9px;
+            color: #94A3B8;
+            text-align: center;
+        }}
+    </style>
+</head>
+<body>
+    <div class="report-header">
+        <h1 class="report-title">Executive Order & Revenue Intelligence Report</h1>
+        <p class="report-subtitle">Generated at: {data.get('generated_at', '')} | Source: report.db (SQLite) | Engine: Playwright Headless Chromium</p>
+    </div>
+
+    {kpi_cards_html}
+
+    <h2>Top 5 Revenue Generating Products</h2>
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 40px; text-align: center;">Rank</th>
+                <th>Product Name</th>
+                <th style="width: 120px; text-align: right;">Units Sold</th>
+                <th style="width: 140px; text-align: right;">Total Revenue</th>
+            </tr>
+        </thead>
+        <tbody>
+            {top_products_rows}
+        </tbody>
+    </table>
+
+    <h2>Recent Transaction Ledger (Multi-Page Verification)</h2>
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 65px;">Order ID</th>
+                <th>Customer Name</th>
+                <th>Product</th>
+                <th style="width: 90px; text-align: right;">Amount</th>
+                <th style="width: 130px;">Date Created</th>
+            </tr>
+        </thead>
+        <tbody>
+            {order_rows}
+        </tbody>
+    </table>
+
+    <div class="footer">
+        FlyRank Backend AI Engineering &bull; BE-08 PDF Report Generator &bull; Headless Chromium Rendered
+    </div>
+</body>
+</html>
+"""
+    return html
+
+def generate_pdf_report(data: dict, output_path: str) -> str:
+    """
+    Renders the report HTML into a high-fidelity A4 PDF using Playwright's headless Chromium.
+    Enforces the 'break-inside: avoid' table pagination rules.
+    """
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-    
-    # Standard margins: 0.5 inch (36 points)
-    doc = SimpleDocTemplate(
-        output_path,
-        pagesize=letter,
-        leftMargin=36,
-        rightMargin=36,
-        topMargin=36,
-        bottomMargin=36
-    )
-    
-    styles = getSampleStyleSheet()
-    
-    # Custom Brand Styles matching Identity Kit
-    title_style = ParagraphStyle(
-        'ReportTitle',
-        parent=styles['Heading1'],
-        fontName='Helvetica-Bold',
-        fontSize=22,
-        leading=26,
-        textColor=colors.HexColor('#0F172A'),
-        spaceAfter=6
-    )
-    
-    subtitle_style = ParagraphStyle(
-        'ReportSubtitle',
-        parent=styles['Normal'],
-        fontName='Helvetica',
-        fontSize=10,
-        leading=14,
-        textColor=colors.HexColor('#64748B'),
-        spaceAfter=15
-    )
-    
-    h2_style = ParagraphStyle(
-        'ReportH2',
-        parent=styles['Heading2'],
-        fontName='Helvetica-Bold',
-        fontSize=14,
-        leading=18,
-        textColor=colors.HexColor('#0F172A'),
-        spaceBefore=12,
-        spaceAfter=8
-    )
-    
-    cell_style = ParagraphStyle(
-        'TableCell',
-        parent=styles['Normal'],
-        fontName='Helvetica',
-        fontSize=8,
-        leading=11,
-        textColor=colors.HexColor('#1E293B')
-    )
-    
-    header_cell_style = ParagraphStyle(
-        'HeaderCell',
-        parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=9,
-        leading=12,
-        textColor=colors.white
-    )
+    html_content = build_html_report(data)
 
-    story = []
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.set_content(html_content, wait_until="networkidle")
+        page.pdf(
+            path=output_path,
+            format="A4",
+            print_background=True,
+            margin={
+                "top": "18mm",
+                "bottom": "18mm",
+                "left": "14mm",
+                "right": "14mm"
+            }
+        )
+        browser.close()
 
-    # 1. Header & Title Block
-    story.append(Paragraph("Executive Order & Revenue Intelligence Report", title_style))
-    story.append(Paragraph(f"Generated at: {data['generated_at']} | Source: report.db (SQLite) | Engine: FlyRank BE-08", subtitle_style))
-    story.append(Spacer(1, 10))
-
-    # 2. Executive Metric KPI Cards Table
-    kpi_data = [
-        [
-            Paragraph("<b>Total Orders</b>", header_cell_style),
-            Paragraph("<b>Total Revenue</b>", header_cell_style),
-            Paragraph("<b>Avg Order Value</b>", header_cell_style)
-        ],
-        [
-            Paragraph(f"<font size=16 color='#0F172A'><b>{data['total_orders']}</b></font>", cell_style),
-            Paragraph(f"<font size=16 color='#10B981'><b>${data['total_revenue']:,.2f}</b></font>", cell_style),
-            Paragraph(f"<font size=16 color='#0F172A'><b>${data['avg_order_value']:,.2f}</b></font>", cell_style)
-        ]
-    ]
-    kpi_table = Table(kpi_data, colWidths=[180, 180, 180])
-    kpi_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0F172A')),
-        ('BACKGROUND', (0, 1), (-1, 1), colors.HexColor('#F8FAFC')),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#E2E8F0')),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-    ]))
-    story.append(kpi_table)
-    story.append(Spacer(1, 15))
-
-    # 3. Top 5 Products by Revenue
-    story.append(Paragraph("Top 5 Revenue Generating Products", h2_style))
-    top_rows = [
-        [Paragraph("Product Name", header_cell_style), Paragraph("Units Sold", header_cell_style), Paragraph("Total Revenue", header_cell_style)]
-    ]
-    for p in data["top_products"]:
-        top_rows.append([
-            Paragraph(p["product"], cell_style),
-            Paragraph(str(p["units_sold"]), cell_style),
-            Paragraph(f"${p['revenue']:,.2f}", cell_style)
-        ])
-    top_table = Table(top_rows, colWidths=[280, 120, 140])
-    top_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E293B')),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-    ]))
-    story.append(top_table)
-    story.append(Spacer(1, 15))
-
-    # 4. Long Detailed Orders Table (Demonstrates Clean Multi-Page Breaks and Repeating Header)
-    story.append(Paragraph("Recent Transaction Ledger (Multi-Page Verification)", h2_style))
-    detail_rows = [
-        [
-            Paragraph("Order ID", header_cell_style),
-            Paragraph("Customer Name", header_cell_style),
-            Paragraph("Product", header_cell_style),
-            Paragraph("Amount", header_cell_style),
-            Paragraph("Date Created", header_cell_style)
-        ]
-    ]
-    for order in data["detailed_orders"]:
-        detail_rows.append([
-            Paragraph(f"#{order['id']}", cell_style),
-            Paragraph(order["customer"], cell_style),
-            Paragraph(order["product"], cell_style),
-            Paragraph(f"${order['amount']:.2f}", cell_style),
-            Paragraph(order["created_at"], cell_style)
-        ])
-        
-    # repeatRows=1 guarantees that the table header row repeats automatically on Page 2+
-    detail_table = Table(detail_rows, colWidths=[60, 130, 160, 80, 110], repeatRows=1)
-    detail_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0F172A')),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F1F5F9')]),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
-    story.append(detail_table)
-
-    # Build the document
-    doc.build(story)
     return output_path
 
 if __name__ == "__main__":
@@ -171,4 +295,4 @@ if __name__ == "__main__":
     size_bytes = os.path.getsize(test_pdf)
     print(f"Generated PDF at: {test_pdf} ({size_bytes} bytes)")
     assert size_bytes > 5000
-    print("Stage 3 Checkpoint Passed: Clean multi-page PDF generated with repeating table headers.")
+    print("Stage 3 Checkpoint Passed: Clean multi-page PDF generated via Playwright with repeating table headers.")
