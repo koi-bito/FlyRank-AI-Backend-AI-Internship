@@ -1,14 +1,53 @@
 import os
 import time
-from fastapi import FastAPI, HTTPException, status, Request
+from fastapi import FastAPI, HTTPException, status, Request, Depends, Response
 from fastapi.responses import JSONResponse
 import jwt
 import uvicorn
 from auth import (
-    USERS_DB, hash_password, verify_password, create_access_token, decode_access_token
+    USERS_DB, REVOKED_TOKENS, hash_password, verify_password,
+    create_access_token, decode_access_token
 )
 
 app = FastAPI(title="Auth & Protected API", version="1.0.0")
+
+# Reusable Auth Dependency (Middleware Pattern)
+async def get_current_user(request: Request):
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Access token required"
+        )
+        
+    token = auth_header.split(" ")[1].strip()
+    try:
+        payload = decode_access_token(token)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired"
+        )
+    except (jwt.InvalidTokenError, Exception) as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token"
+        )
+        
+    user_email = payload.get("email")
+    user = USERS_DB.get(user_email)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User account no longer exists"
+        )
+        
+    return {
+        "id": user["id"],
+        "email": user["email"],
+        "created_at": user["created_at"],
+        "token": token
+    }
 
 @app.get("/")
 def get_root():
@@ -93,6 +132,11 @@ async def login(payload: dict):
         "expires_in": 3600
     }
 
+@app.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(current_user: dict = Depends(get_current_user)):
+    REVOKED_TOKENS.add(current_user["token"])
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
 @app.get("/public/info")
 def get_public_info():
     return {
@@ -102,41 +146,21 @@ def get_public_info():
     }
 
 @app.get("/protected/profile")
-def get_protected_profile(request: Request):
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={"error": "Access token required"}
-        )
-        
-    token = auth_header.split(" ")[1].strip()
-    try:
-        payload = decode_access_token(token)
-    except jwt.ExpiredSignatureError:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={"error": "Token has expired"}
-        )
-    except (jwt.InvalidTokenError, Exception):
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={"error": "Invalid or expired token"}
-        )
-        
-    user_email = payload.get("email")
-    user = USERS_DB.get(user_email)
-    if not user:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={"error": "User account no longer exists"}
-        )
-        
+def get_protected_profile(current_user: dict = Depends(get_current_user)):
     return {
-        "id": user["id"],
-        "email": user["email"],
-        "created_at": user["created_at"],
+        "id": current_user["id"],
+        "email": current_user["email"],
+        "created_at": current_user["created_at"],
         "authenticated": True
+    }
+
+@app.get("/protected/settings")
+def get_protected_settings(current_user: dict = Depends(get_current_user)):
+    return {
+        "user_id": current_user["id"],
+        "notifications": True,
+        "mfa_enabled": False,
+        "theme": "dark"
     }
 
 if __name__ == "__main__":
