@@ -114,6 +114,29 @@ def get_report_data() -> dict:
         "detailed_orders": order_items
     }
 
+def get_report_by_date(date_key: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, date_key, file_path, created_at FROM reports WHERE date_key = ? ORDER BY created_at DESC LIMIT 1;", (date_key,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def get_report_by_id(report_id: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, date_key, file_path, created_at FROM reports WHERE id = ?;", (report_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def save_report(report_id: str, date_key: str, file_path: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO reports (id, date_key, file_path) VALUES (?, ?, ?);", (report_id, date_key, file_path))
+    conn.commit()
+    conn.close()
+
 if __name__ == "__main__":
     init_and_seed_db()
     data = get_report_data()
