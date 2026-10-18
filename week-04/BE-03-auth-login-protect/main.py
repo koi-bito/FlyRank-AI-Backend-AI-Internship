@@ -1,18 +1,15 @@
 import os
 import time
-from fastapi import FastAPI, HTTPException, status, Request, Depends, Response
+from fastapi import FastAPI, HTTPException, status, Depends, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
-import jwt
 import uvicorn
-from auth import (
-    USERS_DB, REVOKED_TOKENS, hash_password, verify_password,
-    create_access_token, decode_access_token
-)
+from supabase_auth.errors import AuthApiError
+from auth import supabase, REVOKED_TOKENS
 
 app = FastAPI(
     title="Auth & Protected Routes API",
-    description="JWT-based authentication service with signup, login, token revocation (logout), and Bearer token security schemes.",
+    description="Supabase Auth service with signup, login, token revocation (logout), and Bearer token security schemes.",
     version="1.0.0"
 )
 
@@ -27,45 +24,51 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         )
         
     token = credentials.credentials
-    try:
-        payload = decode_access_token(token)
-    except jwt.ExpiredSignatureError:
+    if token in REVOKED_TOKENS:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has expired"
+            detail="Token has been revoked via logout"
         )
-    except jwt.InvalidTokenError:
+        
+    try:
+        user_res = supabase.auth.get_user(token)
+        if not user_res or not user_res.user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired token"
+            )
+        user = user_res.user
+        created_at_val = user.created_at
+        if hasattr(created_at_val, "timestamp"):
+            created_at_ts = int(created_at_val.timestamp())
+        else:
+            created_at_ts = str(created_at_val or int(time.time()))
+            
+        return {
+            "id": str(user.id),
+            "email": user.email,
+            "created_at": created_at_ts,
+            "token": token
+        }
+    except AuthApiError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token"
         )
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token"
         )
-        
-    user_email = payload.get("email")
-    user = USERS_DB.get(user_email)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User account no longer exists"
-        )
-        
-    return {
-        "id": user["id"],
-        "email": user["email"],
-        "created_at": user["created_at"],
-        "token": token
-    }
 
 @app.get("/", tags=["Public"])
 def get_root():
     return {
         "name": "Auth & Protected Routes API",
         "version": "1.0.0",
-        "auth_provider": "JWT Bearer",
+        "auth_provider": "Supabase Auth",
         "docs": "/docs",
         "status": "ready"
     }
@@ -91,28 +94,29 @@ async def signup(payload: dict):
             content={"error": "Password is required and must be at least 6 characters"}
         )
         
-    if email in USERS_DB:
+    try:
+        res = supabase.auth.sign_up({
+            "email": email,
+            "password": password
+        })
+        user = res.user
+        user_id = str(user.id) if user and user.id else "user-registered"
+        user_email = user.email if user and user.email else email
+        return {
+            "id": user_id,
+            "email": user_email,
+            "message": "User registered successfully"
+        }
+    except AuthApiError as e:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            content={"error": "User with this email already exists"}
+            content={"error": e.message}
         )
-        
-    pwd_hash, salt = hash_password(password)
-    user_id = len(USERS_DB) + 1
-    new_user = {
-        "id": user_id,
-        "email": email,
-        "password_hash": pwd_hash,
-        "salt": salt,
-        "created_at": int(time.time())
-    }
-    USERS_DB[email] = new_user
-    
-    return {
-        "id": user_id,
-        "email": email,
-        "message": "User registered successfully"
-    }
+    except Exception as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": str(e)}
+        )
 
 @app.post("/auth/login", tags=["Auth"])
 async def login(payload: dict):
@@ -130,23 +134,42 @@ async def login(payload: dict):
             content={"error": "Email and password are required"}
         )
         
-    user = USERS_DB.get(email)
-    if not user or not verify_password(password, user["salt"], user["password_hash"]):
+    try:
+        res = supabase.auth.sign_in_with_password({
+            "email": email,
+            "password": password
+        })
+        if not res or not res.session:
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"error": "Invalid login credentials"}
+            )
+        session = res.session
+        return {
+            "access_token": session.access_token,
+            "token_type": session.token_type or "bearer",
+            "expires_in": session.expires_in or 3600
+        }
+    except AuthApiError as e:
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            content={"error": "Invalid login credentials"}
+            content={"error": e.message or "Invalid login credentials"}
         )
-        
-    token = create_access_token(user["id"], user["email"])
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-        "expires_in": 3600
-    }
+    except Exception as e:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"error": str(e) or "Invalid login credentials"}
+        )
 
 @app.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT, tags=["Auth"])
 def logout(current_user: dict = Depends(get_current_user)):
-    REVOKED_TOKENS.add(current_user["token"])
+    token = current_user.get("token")
+    if token:
+        REVOKED_TOKENS.add(token)
+    try:
+        supabase.auth.sign_out()
+    except Exception:
+        pass
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 @app.get("/public/info", tags=["Public"])
