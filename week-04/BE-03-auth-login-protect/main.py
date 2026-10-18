@@ -1,6 +1,7 @@
 import os
 import time
 from fastapi import FastAPI, HTTPException, status, Request, Depends, Response
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
 import jwt
 import uvicorn
@@ -9,18 +10,23 @@ from auth import (
     create_access_token, decode_access_token
 )
 
-app = FastAPI(title="Auth & Protected API", version="1.0.0")
+app = FastAPI(
+    title="Auth & Protected Routes API",
+    description="JWT-based authentication service with signup, login, token revocation (logout), and Bearer token security schemes.",
+    version="1.0.0"
+)
 
-# Reusable Auth Dependency (Middleware Pattern)
-async def get_current_user(request: Request):
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
+# HTTPBearer security scheme gives Swagger UI the padlock "Authorize" button
+security = HTTPBearer(auto_error=False)
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if not credentials or not credentials.credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Access token required"
         )
         
-    token = auth_header.split(" ")[1].strip()
+    token = credentials.credentials
     try:
         payload = decode_access_token(token)
     except jwt.ExpiredSignatureError:
@@ -28,7 +34,12 @@ async def get_current_user(request: Request):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired"
         )
-    except (jwt.InvalidTokenError, Exception) as e:
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token"
+        )
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token"
@@ -49,16 +60,17 @@ async def get_current_user(request: Request):
         "token": token
     }
 
-@app.get("/")
+@app.get("/", tags=["Public"])
 def get_root():
     return {
         "name": "Auth & Protected Routes API",
         "version": "1.0.0",
         "auth_provider": "JWT Bearer",
+        "docs": "/docs",
         "status": "ready"
     }
 
-@app.post("/auth/signup", status_code=status.HTTP_201_CREATED)
+@app.post("/auth/signup", status_code=status.HTTP_201_CREATED, tags=["Auth"])
 async def signup(payload: dict):
     if not payload:
         return JSONResponse(
@@ -102,7 +114,7 @@ async def signup(payload: dict):
         "message": "User registered successfully"
     }
 
-@app.post("/auth/login")
+@app.post("/auth/login", tags=["Auth"])
 async def login(payload: dict):
     if not payload:
         return JSONResponse(
@@ -132,12 +144,12 @@ async def login(payload: dict):
         "expires_in": 3600
     }
 
-@app.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
+@app.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT, tags=["Auth"])
 def logout(current_user: dict = Depends(get_current_user)):
     REVOKED_TOKENS.add(current_user["token"])
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-@app.get("/public/info")
+@app.get("/public/info", tags=["Public"])
 def get_public_info():
     return {
         "access": "public",
@@ -145,7 +157,7 @@ def get_public_info():
         "timestamp": int(time.time())
     }
 
-@app.get("/protected/profile")
+@app.get("/protected/profile", tags=["Protected"])
 def get_protected_profile(current_user: dict = Depends(get_current_user)):
     return {
         "id": current_user["id"],
@@ -154,7 +166,7 @@ def get_protected_profile(current_user: dict = Depends(get_current_user)):
         "authenticated": True
     }
 
-@app.get("/protected/settings")
+@app.get("/protected/settings", tags=["Protected"])
 def get_protected_settings(current_user: dict = Depends(get_current_user)):
     return {
         "user_id": current_user["id"],
