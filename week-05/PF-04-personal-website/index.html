@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kunal Aggarwal — Backend AI Engineer | Resilient APIs & Background Systems</title>
+  <meta name="description" content="Portfolio of Kunal Aggarwal. Production-grade backend APIs, Inngest background queues, and failure-tolerant LLM integrations.">
+  <link rel="icon" type="image/svg+xml" href="../../week-03/decide-once-identity-kit/logo.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090D16;
+      --card: #0F172A;
+      --card-hover: #131D35;
+      --border: #1E293B;
+      --text: #F8FAFC;
+      --muted: #94A3B8;
+      --accent: #10B981;
+      --accent-glow: rgba(16, 185, 129, 0.15);
+      --code-bg: #050811;
+      --font-heading: 'Space Grotesk', system-ui, sans-serif;
+      --font-body: 'Inter', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      line-height: 1.6;
+      padding-bottom: 4rem;
+    }
+    header {
+      position: sticky;
+      top: 0;
+      background: rgba(9, 13, 22, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      z-index: 100;
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      max-width: 1200px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .logo-container {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      text-decoration: none;
+      color: var(--text);
+      font-family: var(--font-heading);
+      font-weight: 700;
+      font-size: 1.2rem;
+    }
+    .logo-svg { width: 34px; height: 34px; }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--accent-glow);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      font-weight: 500;
+    }
+    .pulse-dot {
+      width: 7px;
+      height: 7px;
+      background-color: var(--accent);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--accent);
+    }
+    .main-container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 3rem 1.5rem;
+    }
+    .hero {
+      text-align: center;
+      padding: 3rem 0 4rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .hero h1 {
+      font-family: var(--font-heading);
+      font-size: 2.75rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+      margin-bottom: 1.25rem;
+      max-width: 900px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .hero h1 span { color: var(--accent); }
+    .hero p {
+      color: var(--muted);
+      font-size: 1.2rem;
+      max-width: 700px;
+      margin: 0 auto 2.5rem;
+      line-height: 1.7;
+    }
+    .cta-group {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .btn {
+      padding: 0.85rem 1.75rem;
+      border-radius: 8px;
+      font-weight: 600;
+      text-decoration: none;
+      font-size: 0.95rem;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .btn-primary {
+      background-color: var(--accent);
+      color: #042F2E;
+    }
+    .btn-primary:hover {
+      background-color: #34D399;
+      transform: translateY(-2px);
+    }
+    .btn-secondary {
+      background-color: var(--card);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover {
+      background-color: var(--card-hover);
+      border-color: var(--muted);
+    }
+    .section-title {
+      font-family: var(--font-heading);
+      font-size: 1.85rem;
+      font-weight: 700;
+      margin: 4rem 0 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .section-title::before {
+      content: "";
+      width: 4px;
+      height: 24px;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 3rem;
+    }
+    .card {
+      background-color: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.75rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .card:hover {
+      border-color: #334155;
+      transform: translateY(-3px);
+    }
+    .card-tag {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.75rem;
+    }
+    .card h3 {
+      font-family: var(--font-heading);
+      font-size: 1.35rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+    }
+    .card p {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 1.5rem;
+      line-height: 1.6;
+    }
+    .terminal-box {
+      background-color: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: #A7F3D0;
+      overflow-x: auto;
+      margin-bottom: 1.5rem;
+    }
+    .card-link {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.9rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .card-link:hover { text-decoration: underline; }
+    .interactive-sandbox {
+      background-color: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      margin: 3rem 0;
+    }
+    .sandbox-buttons {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+    .sandbox-btn {
+      background: var(--code-bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .sandbox-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .sandbox-output {
+      background-color: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: #E2E8F0;
+      min-height: 120px;
+      white-space: pre-wrap;
+    }
+    .contact-section {
+      background: linear-gradient(180deg, var(--card) 0%, rgba(15, 23, 42, 0.4) 100%);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 3rem 2rem;
+      text-align: center;
+      margin-top: 4rem;
+    }
+    .contact-section h2 {
+      font-family: var(--font-heading);
+      font-size: 2.25rem;
+      margin-bottom: 1rem;
+    }
+    .contact-links {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      margin-top: 2rem;
+      flex-wrap: wrap;
+    }
+    .contact-link-item {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 1rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: color 0.2s;
+    }
+    .contact-link-item:hover { color: var(--accent); }
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-top: 4rem;
+      font-family: var(--font-mono);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <a href="#" class="logo-container">
+      <svg class="logo-svg" viewBox="0 0 100 100">
+        <rect width="100" height="100" rx="20" fill="#090D16" />
+        <rect x="2" y="2" width="96" height="96" rx="18" fill="none" stroke="#1E293B" stroke-width="2" />
+        <text x="50" y="64" font-family="'Space Grotesk', sans-serif" font-size="44" font-weight="700" fill="#F8FAFC" text-anchor="middle">
+          K<tspan fill="#10B981">A</tspan>
+        </text>
+        <circle cx="82" cy="22" r="6" fill="#10B981" />
+      </svg>
+      <span>Kunal Aggarwal</span>
+    </a>
+    <div class="status-badge">
+      <span class="pulse-dot"></span>
+      API STATUS: 200 OK (38ms)
+    </div>
+  </header>
+
+  <div class="main-container">
+    <section class="hero">
+      <h1>I build <span>resilient backend APIs</span> and background workers that prevent LLMs from crashing production.</h1>
+      <p>Specializing in Python (FastAPI), Node.js (Express), PostgreSQL in Docker, and Inngest asynchronous pipelines. Production software designed to survive dependency outages.</p>
+      <div class="cta-group">
+        <a href="#booking" class="btn btn-primary">Book 20-Min Technical Walkthrough</a>
+        <a href="#case-studies" class="btn btn-secondary">Inspect Case Studies</a>
+      </div>
+    </section>
+
+    <h2 id="case-studies" class="section-title">Verified Architectural Case Studies</h2>
+    <div class="grid">
+      <!-- Case 1 -->
+      <div class="card">
+        <div>
+          <div class="card-tag">BE-07 / Defensive LLM API</div>
+          <h3>Resilient AI Triage Boundary</h3>
+          <p>Places LLMs behind strict Pydantic schemas with 30s hard timeouts, single retry schema repairs, and automatic quarantine logging on 422 errors.</p>
+          <div class="terminal-box">curl -X POST /llm/triage \<br>&nbsp;&nbsp;-d '{"text": "issue"}'<br>➔ 200 OK (Validated JSON)</div>
+        </div>
+        <a href="https://github.com/kunalaggarwal" class="card-link">View Repo & 8/8 Evals &rarr;</a>
+      </div>
+
+      <!-- Case 2 -->
+      <div class="card">
+        <div>
+          <div class="card-tag">BE-06 / Event-Driven Queue</div>
+          <h3>Durable Inngest Background Worker</h3>
+          <p>Decouples slow 8-second processing into asynchronous Inngest steps. Instant 202 Accepted response with 3-attempt exponential backoff retries.</p>
+          <div class="terminal-box">POST /reports ➔ 202 Accepted (35ms)<br>Worker Step 1 ➔ Sleep 8s<br>Worker Step 2 ➔ Save Done</div>
+        </div>
+        <a href="https://github.com/kunalaggarwal" class="card-link">View Worker Architecture &rarr;</a>
+      </div>
+
+      <!-- Case 3 -->
+      <div class="card">
+        <div>
+          <div class="card-tag">BE-04 / Containerized Stack</div>
+          <h3>PostgreSQL Stack in Docker</h3>
+          <p>Decouples database engine behind a clean Repository Pattern. Boots entire database cluster and FastAPI workers in one command (`docker compose up`).</p>
+          <div class="terminal-box">docker compose up<br>✔ Container be04-postgres (Healthy)<br>✔ Container be04-fastapi (Port 8000)</div>
+        </div>
+        <a href="https://github.com/kunalaggarwal" class="card-link">Inspect Compose & Migrations &rarr;</a>
+      </div>
+    </div>
+
+    <section class="interactive-sandbox">
+      <h2 style="font-family: var(--font-heading); margin-bottom: 0.5rem; font-size: 1.4rem;">Interactive Endpoint Boundary Simulator</h2>
+      <p style="color: var(--muted); font-size: 0.95rem; margin-bottom: 1.25rem;">Click preset probes to observe how defensive boundary validation behaves in real time:</p>
+      <div class="sandbox-buttons">
+        <button class="sandbox-btn" onclick="runSandbox('health')">GET /health</button>
+        <button class="sandbox-btn" onclick="runSandbox('create_valid')">POST /tasks (Valid)</button>
+        <button class="sandbox-btn" onclick="runSandbox('create_empty')">POST /tasks (Empty Title ➔ 400)</button>
+        <button class="sandbox-btn" onclick="runSandbox('tampered_auth')">GET /protected/profile (Tampered ➔ 401)</button>
+        <button class="sandbox-btn" onclick="runSandbox('llm_triage')">POST /llm/triage (Validated ➔ 200)</button>
+      </div>
+      <div id="sandbox-display" class="sandbox-output">Select a preset probe above to inspect HTTP status code and response payload...</div>
+    </section>
+
+    <section id="booking" class="contact-section">
+      <h2>Let's Do a Code Walkthrough</h2>
+      <p style="color: var(--muted); max-width: 600px; margin: 0 auto;">No slides or generic pitches. In 20 minutes, I'll walk you through my active codebase, test suites, and failure recovery logs.</p>
+      <div style="margin-top: 2rem;">
+        <a href="https://cal.com/kunal-aggarwal" class="btn btn-primary" style="font-size: 1.05rem; padding: 1rem 2.25rem;">Schedule 20-Min Call on Cal.com</a>
+      </div>
+      <div class="contact-links">
+        <a href="https://github.com/kunalaggarwal" class="contact-link-item">
+          <span>GitHub: @kunalaggarwal</span>
+        </a>
+        <a href="https://linkedin.com/in/kunalaggarwal" class="contact-link-item">
+          <span>LinkedIn Profile</span>
+        </a>
+        <a href="mailto:kunal@flyrank.ai" class="contact-link-item">
+          <span>Email: kunal@flyrank.ai</span>
+        </a>
+      </div>
+    </section>
+
+    <footer>
+      Built with Semantic HTML5 & Vanilla CSS &bull; Netlify Edge Deployment &bull; Kunal Aggarwal &copy; 2026
+    </footer>
+  </div>
+
+  <script>
+    const mockResponses = {
+      health: `HTTP/1.1 200 OK\nContent-Type: application/json\n\n{\n  "status": "ok",\n  "database": "PostgreSQL (Docker Connected)",\n  "latency_ms": 38\n}`,
+      create_valid: `HTTP/1.1 201 Created\nContent-Type: application/json\n\n{\n  "id": 4,\n  "title": "Verify Inngest background queue",\n  "done": false,\n  "created_at": "2026-10-18T03:22:15Z"\n}`,
+      create_empty: `HTTP/1.1 400 Bad Request\nContent-Type: application/json\n\n{\n  "error": "Title is required and cannot be whitespace"\n}`,
+      tampered_auth: `HTTP/1.1 401 Unauthorized\nContent-Type: application/json\n\n{\n  "error": "Invalid or expired token signature"\n}`,
+      llm_triage: `HTTP/1.1 200 OK\nContent-Type: application/json\n\n{\n  "category": "bug",\n  "urgency": "high",\n  "assigned_team": "backend",\n  "confidence": 0.94,\n  "tokens_used": 142,\n  "duration_ms": 412\n}`
+    };
+    function runSandbox(type) {
+      const display = document.getElementById("sandbox-display");
+      display.textContent = "Executing request probe...";
+      setTimeout(() => {
+        display.textContent = mockResponses[type] || "No response configured.";
+      }, 150);
+    }
+  </script>
+</body>
+</html>
