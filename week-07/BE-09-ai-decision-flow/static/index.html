@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Decision Flow Orchestrator | FlyRank BE-09</title>
+  <style>
+    :root {
+      --bg: #090D16;
+      --card-bg: #131B2E;
+      --card-border: #1E293B;
+      --text: #F8FAFC;
+      --muted: #94A3B8;
+      --emerald: #10B981;
+      --red: #EF4444;
+      --blue: #3B82F6;
+      --amber: #F59E0B;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--card-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(19, 27, 46, 0.8);
+      backdrop-filter: blur(8px);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-logo {
+      width: 32px; height: 32px; border-radius: 8px; background: var(--emerald);
+      display: flex; align-items: center; justify-content: center; font-weight: bold; color: #000;
+    }
+    .brand-title { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.02em; }
+    .badge {
+      font-size: 0.75rem; padding: 3px 8px; border-radius: 12px;
+      background: rgba(16, 185, 129, 0.15); color: var(--emerald); border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .header-actions { display: flex; gap: 10px; }
+    button {
+      padding: 8px 14px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+      border: 1px solid var(--card-border); background: var(--card-bg); color: var(--text);
+      transition: all 0.15s ease;
+    }
+    button:hover { border-color: var(--emerald); }
+    button.primary { background: var(--emerald); color: #000; border-color: var(--emerald); }
+    button.primary:hover { opacity: 0.9; }
+
+    main {
+      flex: 1; display: grid; grid-template-columns: 1fr 380px; gap: 0;
+      height: calc(100vh - 65px);
+    }
+    .canvas-panel {
+      position: relative; overflow: hidden; background: radial-gradient(#1E293B 1px, transparent 1px);
+      background-size: 24px 24px; background-color: var(--bg);
+      display: flex; flex-direction: column;
+    }
+    .canvas-controls {
+      padding: 12px 20px; display: flex; gap: 12px; align-items: center;
+      border-bottom: 1px solid rgba(30, 41, 59, 0.5); background: rgba(9, 13, 22, 0.7);
+    }
+    .flow-viewport {
+      flex: 1; position: relative; overflow: auto; padding: 40px;
+    }
+    .svg-canvas {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; z-index: 1;
+    }
+    .nodes-container { position: relative; z-index: 2; width: 100%; height: 100%; }
+
+    /* Node Styles */
+    .flow-node {
+      position: absolute; width: 220px; background: var(--card-bg);
+      border: 1.5px solid var(--card-border); border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4); padding: 14px;
+      transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+      cursor: grab;
+    }
+    .flow-node:active { cursor: grabbing; }
+    .flow-node.active-evaluating {
+      border-color: var(--amber); box-shadow: 0 0 20px rgba(245, 158, 11, 0.5);
+      animation: pulse 1s infinite alternate;
+    }
+    .flow-node.active-passed {
+      border-color: var(--emerald); box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+    }
+    .flow-node.active-outcome {
+      border-color: var(--emerald); background: rgba(16, 185, 129, 0.15);
+      box-shadow: 0 0 24px rgba(16, 185, 129, 0.5);
+    }
+    @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.03); } }
+
+    .node-header {
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+    }
+    .node-type-badge {
+      font-size: 0.65rem; font-weight: 700; text-transform: uppercase; padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .type-start { background: #3B82F622; color: var(--blue); border: 1px solid #3B82F655; }
+    .type-decision { background: #F59E0B22; color: var(--amber); border: 1px solid #F59E0B55; }
+    .type-outcome { background: #10B98122; color: var(--emerald); border: 1px solid #10B98155; }
+
+    .node-title { font-size: 0.9rem; font-weight: 600; color: #fff; margin-bottom: 6px; }
+    .node-prompt {
+      font-size: 0.78rem; color: var(--muted); line-height: 1.35;
+      background: rgba(0,0,0,0.3); padding: 6px 8px; border-radius: 6px; border: 1px solid #1E293B;
+    }
+
+    /* Edge Labels & Ports */
+    .port-label-yes {
+      font-size: 0.7rem; font-weight: bold; color: var(--emerald);
+      background: #090D16; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--emerald);
+    }
+    .port-label-no {
+      font-size: 0.7rem; font-weight: bold; color: var(--red);
+      background: #090D16; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--red);
+    }
+
+    /* Right Sidebar (Execution & Logs) */
+    .sidebar {
+      background: #0D1424; border-left: 1px solid var(--card-border);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .sidebar-section { padding: 18px; border-bottom: 1px solid var(--card-border); }
+    .sidebar-title { font-size: 0.85rem; font-weight: 700; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; letter-spacing: 0.05em; }
+
+    textarea {
+      width: 100%; height: 90px; background: #090D16; border: 1px solid var(--card-border);
+      border-radius: 6px; color: #fff; font-family: inherit; font-size: 0.85rem;
+      padding: 10px; resize: none; margin-bottom: 10px;
+    }
+    textarea:focus { outline: none; border-color: var(--emerald); }
+
+    .preset-buttons { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+    .preset-btn {
+      text-align: left; font-size: 0.75rem; padding: 6px 10px; border-radius: 4px;
+      background: #131B2E; border: 1px solid var(--card-border); color: var(--muted);
+    }
+    .preset-btn:hover { color: #fff; border-color: var(--emerald); }
+
+    .logs-panel { flex: 1; overflow-y: auto; padding: 18px; }
+    .log-item {
+      background: #090D16; border: 1px solid var(--card-border); border-radius: 8px;
+      padding: 12px; margin-bottom: 10px; font-size: 0.8rem;
+    }
+    .log-item.yes { border-left: 4px solid var(--emerald); }
+    .log-item.no { border-left: 4px solid var(--red); }
+    .log-item.outcome { border-left: 4px solid var(--blue); }
+    .log-step-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
+    .log-step-title { font-weight: 600; color: #fff; }
+    .log-badge { font-weight: bold; font-size: 0.7rem; padding: 1px 6px; border-radius: 4px; }
+    .log-badge.YES { background: #10B98133; color: var(--emerald); }
+    .log-badge.NO { background: #EF444433; color: var(--red); }
+    .log-rationale { color: var(--muted); font-size: 0.75rem; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-logo">&#x26A1;</div>
+      <div>
+        <div class="brand-title">AI Decision Flow Studio</div>
+        <div style="font-size: 0.75rem; color: var(--muted);">React Flow Visual Editor + Inngest Step Orchestration</div>
+      </div>
+      <span class="badge">FlyRank BE-09</span>
+    </div>
+    <div class="header-actions">
+      <select id="flowSelector" style="background: var(--card-bg); color: #fff; border: 1px solid var(--card-border); padding: 8px; border-radius: 6px; font-size: 0.85rem;" onchange="loadSelectedFlow(this.value)">
+        <option value="support-ticket-triage">Customer Support Incident Triage</option>
+        <option value="pr-security-gate">PR Security & Defect Gate</option>
+      </select>
+      <button onclick="exportWorkflowJSON()">Export JSON</button>
+      <button class="primary" id="runBtn" onclick="runFlow()">&#x25B6; Run Decision Flow</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="canvas-panel">
+      <div class="canvas-controls">
+        <span style="font-size: 0.8rem; color: var(--muted); font-weight: 600;">ACTIVE FLOW CANVAS</span>
+        <span style="font-size: 0.75rem; color: var(--emerald);">&#x25CF; Dynamic Branching (YES / NO)</span>
+        <span style="font-size: 0.75rem; color: var(--blue);">&#x25CF; Inngest Step Durable Execution</span>
+      </div>
+      <div class="flow-viewport" id="viewport">
+        <svg class="svg-canvas" id="edgeSvg"></svg>
+        <div class="nodes-container" id="nodesContainer"></div>
+      </div>
+    </div>
+
+    <aside class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-title">Input Context (Test Case)</div>
+        <textarea id="inputContext">My credit card was charged $150 twice for invoice #9021. Please issue a refund immediately.</textarea>
+        <div class="sidebar-title" style="margin-top: 8px;">Preset Test Cases:</div>
+        <div class="preset-buttons">
+          <button class="preset-btn" onclick="setPreset('My credit card was charged $150 twice for invoice #9021. Please issue a refund immediately.')">&#x1F4B3; Case 1: Billing & Refund Request</button>
+          <button class="preset-btn" onclick="setPreset('CRITICAL OUTAGE: The production auth database is crashing with 500 timeouts across all clusters!')">&#x1F6A8; Case 2: Critical Production Outage</button>
+          <button class="preset-btn" onclick="setPreset('Hello, I was wondering how I can update my team profile photo in settings?')">&#x1F4AC; Case 3: Routine General Question</button>
+        </div>
+      </div>
+
+      <div class="sidebar-section" style="padding-bottom: 10px;">
+        <div class="sidebar-title">Final Workflow Outcome</div>
+        <div id="outcomeBox" style="font-size: 0.95rem; font-weight: 700; color: var(--emerald); padding: 12px; background: rgba(16,185,129,0.1); border: 1px dashed var(--emerald); border-radius: 6px; text-align: center;">
+          Awaiting Execution...
+        </div>
+      </div>
+
+      <div class="logs-panel">
+        <div class="sidebar-title">Inngest Execution Trace</div>
+        <div id="logsContainer">
+          <div style="font-size: 0.78rem; color: var(--muted); text-align: center; margin-top: 30px;">
+            Click <b>Run Decision Flow</b> to execute step traversal.
+          </div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    let activeGraph = null;
+    let sampleFlows = {};
+
+    async function init() {
+      try {
+        const res = await fetch('/api/sample-flows');
+        sampleFlows = await res.json();
+        loadSelectedFlow('support-ticket-triage');
+      } catch (err) {
+        console.error("Failed to load sample flows:", err);
+      }
+    }
+
+    function loadSelectedFlow(flowId) {
+      if (sampleFlows[flowId]) {
+        activeGraph = JSON.parse(JSON.stringify(sampleFlows[flowId]));
+        renderGraph(activeGraph);
+      }
+    }
+
+    function renderGraph(graph) {
+      const container = document.getElementById('nodesContainer');
+      container.innerHTML = '';
+      
+      graph.nodes.forEach(node => {
+        const div = document.createElement('div');
+        div.className = 'flow-node';
+        div.id = `node-${node.id}`;
+        div.style.left = `${node.x}px`;
+        div.style.top = `${node.y}px`;
+
+        const typeBadge = `<span class="node-type-badge type-${node.type}">${node.type}</span>`;
+        const promptHtml = node.prompt ? `<div class="node-prompt">${node.prompt}</div>` : '';
+
+        div.innerHTML = `
+          <div class="node-header">
+            <span style="font-size: 0.75rem; color: var(--muted); font-weight: 600;">#${node.id}</span>
+            ${typeBadge}
+          </div>
+          <div class="node-title">${node.label}</div>
+          ${promptHtml}
+        `;
+        container.appendChild(div);
+      });
+
+      renderEdges(graph);
+    }
+
+    function renderEdges(graph, activePathEdges = []) {
+      const svg = document.getElementById('edgeSvg');
+      svg.innerHTML = '';
+
+      graph.edges.forEach(edge => {
+        const srcNode = graph.nodes.find(n => n.id === edge.source);
+        const tgtNode = graph.nodes.find(n => n.id === edge.target);
+        if (!srcNode || !tgtNode) return;
+
+        const x1 = srcNode.x + 220;
+        const y1 = srcNode.y + 50;
+        const x2 = tgtNode.x;
+        const y2 = tgtNode.y + 50;
+
+        const isActive = activePathEdges.includes(edge.id);
+        const color = edge.branch === 'YES' ? '#10B981' : (edge.branch === 'NO' ? '#EF4444' : '#64748B');
+        const strokeWidth = isActive ? 3.5 : 1.5;
+        const opacity = isActive ? 1.0 : 0.45;
+
+        // Bezier curve
+        const dx = (x2 - x1) * 0.5;
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+        path.setAttribute("d", d);
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke", color);
+        path.setAttribute("stroke-width", strokeWidth);
+        path.setAttribute("stroke-opacity", opacity);
+        if (isActive) {
+          path.setAttribute("stroke-dasharray", "6, 4");
+          path.setAttribute("style", "animation: dash 1s linear infinite;");
+        }
+        svg.appendChild(path);
+
+        // Edge label (YES / NO)
+        if (edge.branch !== 'DEFAULT') {
+          const midX = (x1 + x2) / 2;
+          const midY = (y1 + y2) / 2 - 8;
+          const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          text.setAttribute("x", midX);
+          text.setAttribute("y", midY);
+          text.setAttribute("fill", color);
+          text.setAttribute("font-size", "11px");
+          text.setAttribute("font-weight", "bold");
+          text.setAttribute("text-anchor", "middle");
+          text.textContent = edge.branch;
+          svg.appendChild(text);
+        }
+      });
+    }
+
+    function setPreset(text) {
+      document.getElementById('inputContext').value = text;
+    }
+
+    async function runFlow() {
+      const runBtn = document.getElementById('runBtn');
+      const context = document.getElementById('inputContext').value;
+      const outcomeBox = document.getElementById('outcomeBox');
+      const logsContainer = document.getElementById('logsContainer');
+
+      runBtn.disabled = true;
+      runBtn.innerText = "Evaluating Steps...";
+      outcomeBox.innerText = "Evaluating Graph...";
+      outcomeBox.style.color = "var(--amber)";
+      logsContainer.innerHTML = '';
+
+      // Clear existing active node highlights
+      document.querySelectorAll('.flow-node').forEach(el => {
+        el.className = 'flow-node';
+      });
+
+      try {
+        const res = await fetch('/api/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ graph: activeGraph, input_context: context })
+        });
+        const data = await res.json();
+
+        // Animate sequential steps
+        const activeEdgeIds = [];
+        for (let i = 0; i < data.trace.length; i++) {
+          const step = data.trace[i];
+          const nodeEl = document.getElementById(`node-${step.node_id}`);
+          if (nodeEl) {
+            nodeEl.classList.add('active-evaluating');
+            await new Promise(r => setTimeout(r, 450));
+            nodeEl.classList.remove('active-evaluating');
+            if (step.type === 'outcome') {
+              nodeEl.classList.add('active-outcome');
+            } else {
+              nodeEl.classList.add('active-passed');
+            }
+          }
+
+          // Locate edge traversed
+          if (step.next_node) {
+            const edge = activeGraph.edges.find(e => e.source === step.node_id && e.target === step.next_node);
+            if (edge) activeEdgeIds.push(edge.id);
+          }
+          renderEdges(activeGraph, activeEdgeIds);
+
+          // Append log
+          const logDiv = document.createElement('div');
+          const badgeClass = step.decision === 'YES' ? 'yes' : (step.decision === 'NO' ? 'no' : 'outcome');
+          logDiv.className = `log-item ${badgeClass}`;
+          logDiv.innerHTML = `
+            <div class="log-step-header">
+              <span class="log-step-title">Step ${step.step}: ${step.label}</span>
+              <span class="log-badge ${step.decision}">${step.decision}</span>
+            </div>
+            <div style="font-size: 0.72rem; color: var(--muted); margin-bottom: 2px;">Latency: ${step.latency_ms || 15}ms | Model: ${step.model || 'Inngest Engine'}</div>
+            <div class="log-rationale">${step.rationale}</div>
+          `;
+          logsContainer.appendChild(logDiv);
+          logsContainer.scrollTop = logsContainer.scrollHeight;
+        }
+
+        outcomeBox.innerText = `\u2714 ${data.final_outcome}`;
+        outcomeBox.style.color = "var(--emerald)";
+      } catch (err) {
+        outcomeBox.innerText = "\u274C Error during execution";
+        outcomeBox.style.color = "var(--red)";
+        console.error(err);
+      } finally {
+        runBtn.disabled = false;
+        runBtn.innerHTML = "&#x25B6; Run Decision Flow";
+      }
+    }
+
+    function exportWorkflowJSON() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(activeGraph, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `${activeGraph.id}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>
