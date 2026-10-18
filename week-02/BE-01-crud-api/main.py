@@ -1,6 +1,6 @@
-from fastapi import FastAPI, HTTPException, status, Request
+from fastapi import FastAPI, HTTPException, status, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import List, Optional
 import uvicorn
 
@@ -12,9 +12,6 @@ tasks = [
     {"id": 2, "title": "Build BE-01 CRUD API with FastAPI", "done": False},
     {"id": 3, "title": "Configure SQLite persistence for BE-02", "done": False},
 ]
-
-class TaskCreate(BaseModel):
-    title: Optional[str] = None
 
 @app.get("/")
 def get_root():
@@ -64,6 +61,62 @@ async def create_task(payload: dict):
     }
     tasks.append(new_task)
     return new_task
+
+@app.put("/tasks/{task_id}")
+async def update_task(task_id: int, payload: dict):
+    target = None
+    for task in tasks:
+        if task["id"] == task_id:
+            target = task
+            break
+            
+    if not target:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"error": f"Task {task_id} not found"}
+        )
+        
+    if not payload:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": "Update payload cannot be empty"}
+        )
+        
+    if "title" in payload:
+        title = str(payload["title"]).strip()
+        if not title:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"error": "Title cannot be empty"}
+            )
+        target["title"] = title
+        
+    if "done" in payload:
+        if not isinstance(payload["done"], bool):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"error": "'done' field must be a boolean"}
+            )
+        target["done"] = payload["done"]
+        
+    return target
+
+@app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_task(task_id: int):
+    target_idx = None
+    for idx, task in enumerate(tasks):
+        if task["id"] == task_id:
+            target_idx = idx
+            break
+            
+    if target_idx is None:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"error": f"Task {task_id} not found"}
+        )
+        
+    tasks.pop(target_idx)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
