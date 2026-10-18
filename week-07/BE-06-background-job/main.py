@@ -26,16 +26,14 @@ async def say_hello(ctx: inngest.Context, step: inngest.StepSync) -> str:
 @inngest_client.create_function(
     fn_id="make-report",
     trigger=inngest.TriggerEvent(event="report/requested"),
-    retries=2, # Configures 3 attempts total with exponential backoff
+    retries=2,
 )
 async def make_report(ctx: inngest.Context, step: inngest.StepSync) -> dict:
     report_id = ctx.event.data.get("report_id")
     topic = ctx.event.data.get("topic")
 
-    # Step 1: Sleep 8s simulating slow compilation
     await step.sleep("do-the-slow-work", datetime.timedelta(seconds=8))
 
-    # Step 2: Build report or trigger intentional failure
     def _build_step():
         if topic == "fail":
             if report_id in REPORTS:
@@ -51,7 +49,24 @@ async def make_report(ctx: inngest.Context, step: inngest.StepSync) -> dict:
     res = await step.run("build-report", _build_step)
     return res
 
-serve(app, inngest_client, [say_hello, make_report])
+# Stage 4: Cron Heartbeat running every minute
+@inngest_client.create_function(
+    fn_id="heartbeat",
+    trigger=inngest.TriggerCron(cron="* * * * *"),
+)
+async def heartbeat(ctx: inngest.Context, step: inngest.StepSync) -> dict:
+    def _log_summary():
+        total = len(REPORTS)
+        pending = sum(1 for r in REPORTS.values() if r["status"] == "pending")
+        done = sum(1 for r in REPORTS.values() if r["status"] == "done")
+        failed = sum(1 for r in REPORTS.values() if r["status"] == "failed")
+        msg = f"[CRON HEARTBEAT] Total: {total} | Pending: {pending} | Done: {done} | Failed: {failed}"
+        print(msg)
+        return {"total": total, "pending": pending, "done": done, "failed": failed}
+
+    return await step.run("log-queue-status", _log_summary)
+
+serve(app, inngest_client, [say_hello, make_report, heartbeat])
 
 @app.get("/health")
 def get_health():
@@ -59,7 +74,6 @@ def get_health():
 
 @app.post("/reports", status_code=status.HTTP_202_ACCEPTED)
 async def request_report(request: Request):
-    # Boundary Input Validation: Bad inputs must be rejected at the door!
     try:
         body = await request.json()
     except Exception:
@@ -91,7 +105,6 @@ async def request_report(request: Request):
         "created_at": time.time()
     }
 
-    # Dispatch Inngest background event
     await inngest_client.send(inngest.Event(
         name="report/requested",
         data={"report_id": report_id, "topic": topic}
