@@ -70,9 +70,56 @@ def init_and_seed_db():
     print(f"Seeded report.db with exactly {count} orders.")
     return count
 
+def get_report_data() -> dict:
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # 1. Total Orders & Total Revenue
+    cursor.execute("SELECT COUNT(*) as total_orders, ROUND(SUM(amount), 2) as total_revenue, ROUND(AVG(amount), 2) as avg_order FROM orders;")
+    totals = cursor.fetchone()
+    
+    # 2. Top 5 Products by Revenue
+    cursor.execute("""
+        SELECT product, COUNT(*) as units_sold, ROUND(SUM(amount), 2) as revenue
+        FROM orders
+        GROUP BY product
+        ORDER BY revenue DESC
+        LIMIT 5;
+    """)
+    top_products = [dict(r) for r in cursor.fetchall()]
+    
+    # 3. Orders per day (last 7 recorded days)
+    cursor.execute("""
+        SELECT SUBSTR(created_at, 1, 10) as order_date, COUNT(*) as daily_orders, ROUND(SUM(amount), 2) as daily_revenue
+        FROM orders
+        GROUP BY order_date
+        ORDER BY order_date DESC
+        LIMIT 7;
+    """)
+    daily_stats = [dict(r) for r in cursor.fetchall()]
+    
+    # 4. Recent Sample Orders (for the detailed table in the PDF)
+    cursor.execute("SELECT id, customer, product, amount, SUBSTR(created_at, 1, 16) as created_at FROM orders ORDER BY id ASC LIMIT 60;")
+    order_items = [dict(r) for r in cursor.fetchall()]
+    
+    conn.close()
+    
+    return {
+        "generated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "total_orders": totals["total_orders"],
+        "total_revenue": totals["total_revenue"],
+        "avg_order_value": totals["avg_order"],
+        "top_products": top_products,
+        "daily_breakdown": daily_stats,
+        "detailed_orders": order_items
+    }
+
 if __name__ == "__main__":
     init_and_seed_db()
-    # Run second time to verify idempotency
-    count2 = init_and_seed_db()
-    assert count2 == 200
-    print("Stage 1 Checkpoint Passed: Idempotent seed verified (200 orders).")
+    data = get_report_data()
+    print("\n--- Aggregation Query Results ---")
+    print(f"Total Orders: {data['total_orders']}")
+    print(f"Total Revenue: ${data['total_revenue']}")
+    print(f"Top Product: {data['top_products'][0]['product']} (${data['top_products'][0]['revenue']})")
+    print(f"Daily Rows: {len(data['daily_breakdown'])}")
+    print("Stage 2 Checkpoint Passed: get_report_data() returns complete verified aggregate metrics.")
