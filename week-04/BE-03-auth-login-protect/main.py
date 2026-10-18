@@ -2,9 +2,10 @@ import os
 import time
 from fastapi import FastAPI, HTTPException, status, Request
 from fastapi.responses import JSONResponse
+import jwt
 import uvicorn
 from auth import (
-    USERS_DB, hash_password, verify_password, create_access_token
+    USERS_DB, hash_password, verify_password, create_access_token, decode_access_token
 )
 
 app = FastAPI(title="Auth & Protected API", version="1.0.0")
@@ -108,10 +109,34 @@ def get_protected_profile(request: Request):
             status_code=status.HTTP_401_UNAUTHORIZED,
             content={"error": "Access token required"}
         )
-    # Stage 2: gate check present, token not yet cryptographically verified
+        
+    token = auth_header.split(" ")[1].strip()
+    try:
+        payload = decode_access_token(token)
+    except jwt.ExpiredSignatureError:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"error": "Token has expired"}
+        )
+    except (jwt.InvalidTokenError, Exception):
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"error": "Invalid or expired token"}
+        )
+        
+    user_email = payload.get("email")
+    user = USERS_DB.get(user_email)
+    if not user:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"error": "User account no longer exists"}
+        )
+        
     return {
-        "access": "protected",
-        "header_received": auth_header[:15] + "..."
+        "id": user["id"],
+        "email": user["email"],
+        "created_at": user["created_at"],
+        "authenticated": True
     }
 
 if __name__ == "__main__":
