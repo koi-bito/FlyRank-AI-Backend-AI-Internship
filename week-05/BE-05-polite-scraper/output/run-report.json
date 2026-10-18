@@ -1,0 +1,17 @@
+{
+  "start_time": "2026-10-18T03:26:35.956541+00:00",
+  "end_time": "2026-10-18T03:26:37.838799+00:00",
+  "duration_seconds": 1.88,
+  "pages_requested": 64,
+  "cache_hits": 63,
+  "network_fetches": 1,
+  "valid_records": 60,
+  "invalid_records": 0,
+  "failed_pages": [
+    {
+      "url": "https://books.toscrape.com/catalogue/deliberately-broken-fake-book-999.html",
+      "error": "HTTP 404: Not Found",
+      "timestamp": "2026-10-18T03:26:37.838573+00:00"
+    }
+  ]
+}
