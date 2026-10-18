@@ -1,26 +1,47 @@
 """
-BE-05 Polite Scraper — Stage 3 Raw Record Extraction
+BE-05 Polite Scraper — Stage 4 Clean, Check, & Store
 """
 import os
+import re
+import json
 import time
 import datetime
 import urllib.request
 import urllib.parse
 from urllib.error import HTTPError, URLError
 from bs4 import BeautifulSoup
-from typing import Optional, Dict, Any
+from pydantic import BaseModel, Field, ValidationError, field_validator
+from typing import Optional, List, Dict, Any
 
 BASE_URL = "https://books.toscrape.com/"
 START_URL = "https://books.toscrape.com/catalogue/page-1.html"
 USER_AGENT = "FlyRankInternship-BE05/1.0 (+https://github.com/kunalaggarwal)"
 REQUEST_TIMEOUT = 10
-REQUEST_DELAY = 0.5 # 500ms polite pause
+REQUEST_DELAY = 0.5
 
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "cache")
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
 
 os.makedirs(CACHE_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+class BookRecord(BaseModel):
+    title: str = Field(..., min_length=1, description="Book title")
+    product_url: str = Field(..., description="Canonical absolute product URL")
+    price_text: str = Field(..., description="Raw price text with currency symbol")
+    price_gbp: float = Field(..., gt=0, description="Normalized numeric price in GBP")
+    availability_text: str = Field(..., description="Raw stock availability string")
+    rating_text: str = Field(..., description="Text rating (e.g. One, Two, Three, Four, Five)")
+    description: Optional[str] = Field(None, description="Product description text or None")
+    source_page: str = Field(..., description="Origin catalogue page URL")
+    fetched_at: str = Field(..., description="ISO 8601 UTC timestamp of retrieval")
+
+    @field_validator("product_url")
+    @classmethod
+    def validate_url(cls, v: str) -> str:
+        if not v.startswith("https://") and not v.startswith("http://"):
+            raise ValueError(f"Invalid URL schema: {v}")
+        return v
 
 def get_cache_path(url: str) -> str:
     safe_name = url.replace("https://", "").replace("http://", "").replace("/", "_").replace("?", "_")
@@ -53,7 +74,6 @@ def fetch_html(url: str, use_cache: bool = True) -> tuple[str, bool]:
         raise
 
 def discover_catalogue_pages(start_url: str, max_pages: int = 3) -> tuple[list[str], list[dict]]:
-    """Discovers book URLs and retains their source catalogue page."""
     current_url = start_url
     catalogue_pages = []
     book_items = []
@@ -78,7 +98,6 @@ def discover_catalogue_pages(start_url: str, max_pages: int = 3) -> tuple[list[s
         else:
             current_url = None
             
-    # Deduplicate by URL
     seen = set()
     unique_items = []
     for item in book_items:
@@ -89,26 +108,27 @@ def discover_catalogue_pages(start_url: str, max_pages: int = 3) -> tuple[list[s
     return catalogue_pages, unique_items
 
 def parse_book_detail(url: str, source_page: str) -> Dict[str, Any]:
-    """Parses a single book detail page into the 8 required raw fields."""
     html, _ = fetch_html(url)
     soup = BeautifulSoup(html, "html.parser")
     
-    # 1. Title
     h1 = soup.find("h1")
     title = h1.text.strip() if h1 else "Unknown Title"
     
-    # 2. Product URL (Canonical absolute URL)
-    product_url = url
-    
-    # 3. Price text
     price_elem = soup.find("p", class_="price_color")
     price_text = price_elem.text.strip() if price_elem else ""
     
-    # 4. Availability text
+    # Normalize price: "£51.77" -> 51.77
+    price_gbp = 0.0
+    price_match = re.search(r"[\d\.]+", price_text)
+    if price_match:
+        try:
+            price_gbp = float(price_match.group(0))
+        except ValueError:
+            price_gbp = 0.0
+            
     avail_elem = soup.find("p", class_="instock availability")
     availability_text = avail_elem.text.strip() if avail_elem else ""
     
-    # 5. Rating text
     rating_text = "Not Rated"
     star_elem = soup.find("p", class_="star-rating")
     if star_elem:
@@ -118,7 +138,6 @@ def parse_book_detail(url: str, source_page: str) -> Dict[str, Any]:
                 rating_text = c
                 break
                 
-    # 6. Description (Optional; null if missing)
     description = None
     desc_header = soup.find("div", id="product_description")
     if desc_header:
@@ -126,14 +145,13 @@ def parse_book_detail(url: str, source_page: str) -> Dict[str, Any]:
         if desc_p:
             description = desc_p.text.strip()
             
-    # 7. Source page
-    # 8. Fetched at (ISO timestamp)
     fetched_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
     
     return {
         "title": title,
-        "product_url": product_url,
+        "product_url": url,
         "price_text": price_text,
+        "price_gbp": price_gbp,
         "availability_text": availability_text,
         "rating_text": rating_text,
         "description": description,
@@ -141,25 +159,44 @@ def parse_book_detail(url: str, source_page: str) -> Dict[str, Any]:
         "fetched_at": fetched_at
     }
 
-if __name__ == "__main__":
+def clean_check_store():
     cat_pages, book_items = discover_catalogue_pages(START_URL, max_pages=3)
-    print(f"Discovered {len(book_items)} books across {len(cat_pages)} catalogue pages.")
     
-    # Extract details for the books
-    raw_records = []
-    for idx, item in enumerate(book_items, 1):
-        record = parse_book_detail(item["url"], item["source_page"])
-        raw_records.append(record)
-        if idx % 15 == 0 or idx == len(book_items):
-            print(f"Extracted {idx}/{len(book_items)} book detail pages...")
+    valid_records = []
+    error_records = []
+    
+    # Map by canonical product_url to ensure strict idempotency and deduplication
+    books_by_url = {}
+    
+    for item in book_items:
+        raw_data = parse_book_detail(item["url"], item["source_page"])
+        try:
+            validated = BookRecord(**raw_data)
+            books_by_url[validated.product_url] = validated.model_dump()
+        except ValidationError as e:
+            error_records.append({
+                "url": item["url"],
+                "raw": raw_data,
+                "errors": e.errors()
+            })
             
-    print("\n--- Sample Complete Raw Record (All 8 Keys) ---")
-    import pprint
-    pprint.pprint(raw_records[0])
+    valid_records = list(books_by_url.values())
     
-    assert len(raw_records) == 60
-    assert all(k in raw_records[0] for k in [
-        "title", "product_url", "price_text", "availability_text",
-        "rating_text", "description", "source_page", "fetched_at"
-    ])
-    print(f"\nStage 3 Checkpoint Passed: Extracted {len(raw_records)} complete raw records.")
+    # Write to output files
+    books_file = os.path.join(OUTPUT_DIR, "books.json")
+    with open(books_file, "w", encoding="utf-8") as f:
+        json.dump(valid_records, f, indent=2)
+        
+    errors_file = os.path.join(OUTPUT_DIR, "errors.json")
+    with open(errors_file, "w", encoding="utf-8") as f:
+        json.dump(error_records, f, indent=2)
+        
+    return valid_records, error_records
+
+if __name__ == "__main__":
+    valid, errors = clean_check_store()
+    print(f"Validated records: {len(valid)}")
+    print(f"Error records: {len(errors)}")
+    assert len(valid) == 60
+    assert len(errors) == 0
+    print("Stage 4 Checkpoint Passed: Exactly 60 records validated and saved to output/books.json.")
