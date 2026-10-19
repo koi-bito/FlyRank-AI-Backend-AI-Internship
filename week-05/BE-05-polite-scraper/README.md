@@ -30,8 +30,14 @@
 
 ---
 
-## 3. Quickstart (One Command)
+## 3. Quickstart
 
+### Step 1: Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### Step 2: Run the Scraper
 ```bash
 python scraper.py
 ```

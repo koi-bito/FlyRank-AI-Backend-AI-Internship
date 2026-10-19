@@ -17,7 +17,10 @@ This service implements a production-grade, in-memory RESTful Task Management AP
 
 ### Prerequisites
 - Python 3.10+ (Tested on Python 3.13)
-- Dependencies: `pip install fastapi uvicorn pydantic httpx`
+- Install dependencies:
+```bash
+pip install -r requirements.txt
+```
 
 ### Run the Server
 From the `week-02/BE-01-crud-api/` directory:

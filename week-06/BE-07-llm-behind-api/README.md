@@ -14,7 +14,27 @@ This service adds a defensive, non-conversational AI endpoint (`POST /llm/triage
 
 ---
 
-## 2. Verified cURL Proof
+## 2. Quickstart
+
+### Step 1: Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### Step 2: Start API Server
+```bash
+python main.py
+```
+*Server boots at `http://127.0.0.1:8000` with Swagger UI at `http://127.0.0.1:8000/docs`.*
+
+### Step 3: Run the Benchmark Evals Suite
+```bash
+python evals/run_evals.py
+```
+
+---
+
+## 3. Verified cURL Proof
 
 ```bash
 curl -i -X POST http://127.0.0.1:8000/llm/triage \

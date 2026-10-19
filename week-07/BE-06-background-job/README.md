@@ -18,9 +18,14 @@
 
 ---
 
-## 2. Quickstart (Two Commands)
+## 2. Quickstart
 
-### Command 1: Start the Backend API
+### Step 1: Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### Step 2: Start the Backend API
 From `week-07/BE-06-background-job/`:
 ```bash
 python main.py

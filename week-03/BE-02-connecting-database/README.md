@@ -44,7 +44,12 @@ On startup, `init_db()` queries `SELECT COUNT(*) FROM tasks`. It only inserts th
 
 ## 4. Quickstart
 
-### Run the SQLite API
+### Step 1: Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### Step 2: Run the SQLite API
 ```bash
 python main.py
 ```
